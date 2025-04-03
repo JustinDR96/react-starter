@@ -1,0 +1,20 @@
+{
+  "name": "create-react-ai",
+  "version": "1.0.0",
+  "description": "Agent IA local pour setup rapide d'un projet React avec Vite",
+  "main": "setup-agent.js",
+  "bin": {
+    "create-react-ai": "./setup-agent.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Justin",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.8.4",
+    "fs-extra": "^11.3.0",
+    "readline": "^1.3.0"
+  }
+}
