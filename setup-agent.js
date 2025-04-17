@@ -33,6 +33,19 @@ Ici, vous pouvez stocker :
 - Vos images
 - Vos polices
 - Vos icônes SVG ou autres`,
+
+    services: ` # 🛠️ Services
+
+    Ce dossier contient les services de l'application, comme les appels API ou les intégrations tierces.
+👉 Exemple : AuthService, ApiService, etc.
+    `,
+
+    stores: `# 🏪 Stores
+
+
+Ce dossier contient les stores de l'application, comme Redux ou MobX.
+👉 Exemple : UserStore, CartStore, etc.
+    `,
   };
 
   for (const [folder, readme] of Object.entries(folders)) {
@@ -40,6 +53,12 @@ Ici, vous pouvez stocker :
     await fs.ensureDir(fullPath);
     await fs.writeFile(path.join(fullPath, "README.md"), readme);
   }
+}
+
+async function createEnvFile(basePath) {
+  const envContent = `VITE_API_URL=http://api.exemple.com`;
+
+  await fs.writeFile(path.join(basePath, ".env"), envContent);
 }
 
 async function createConstantsAndUtils(basePath) {
@@ -70,12 +89,26 @@ Ce dossier contient les fonctions utilitaires partagées dans l'application.
 👉 Exemples : formatDate, isValidEmail, etc.`
   );
 
-  const routesJs = `export const ROUTES = {
-    HOME: "/",
-    NOT_FOUND: "*",
-  }
+  const routesJs = `
+  import Home from '../pages/home/Home'
+  import NotFound from '../pages/notfound/NotFound'
+
+  export const ROUTES = [
+   {
+    path: '/',
+    element: <Home />,
+    layout: 'default',
+    isIndex: true,
+  },
+     // 404 Not Found
+  {
+    path: '*',
+    element: <NotFound />,
+    layout: 'default',
+  },
+]
   `;
-  await fs.writeFile(path.join(constantsPath, "routes.js"), routesJs);
+  await fs.writeFile(path.join(constantsPath, "routes.jsx"), routesJs);
 }
 
 async function createStylesFolder(basePath) {
@@ -218,12 +251,15 @@ Ce dossier contient les layouts globaux (Header/Footer persistants, wrappers, et
 
   // DefaultLayout
   const layoutCode = `import Navbar from "../components/Navbar/Navbar"
+  import { Outlet } from "react-router-dom"
 
-const DefaultLayout = ({ children }) => {
+const DefaultLayout = () => {
   return (
     <>
       <Navbar />
-      <main>{children}</main>
+      <main>
+        <Outlet />
+      </main>
     </>
   )
 }
@@ -232,6 +268,22 @@ const DefaultLayout = ({ children }) => {
 export default DefaultLayout;
 `;
   await fs.writeFile(path.join(layoutDir, `DefaultLayout.${ext}`), layoutCode);
+
+  const layoutAdmin = `import { Outlet } from 'react-router-dom'
+
+export default function AdminLayout() {
+  return (
+    <div className="admin-layout">
+      <aside>Admin Menu</aside>
+      <main>
+        <Outlet />
+      </main>
+    </div>
+  )
+}
+`;
+
+  await fs.writeFile(path.join(layoutDir, `AdminLayout.${ext}`), layoutAdmin);
 }
 
 async function setupESLintPrettier(basePath) {
@@ -363,35 +415,82 @@ export default function Home() {
   await fs.writeFile(path.join(pagesPath, `home.module.scss`), homeStyle);
 
   // 🛣️ Routing
-  const routesContent = `import { BrowserRouter as Router, Routes, Route } from "react-router-dom"
-  import { ROUTES } from "../constants/routes"
-import Home from "../pages/home/Home"
-import DefaultLayout from "../layouts/DefaultLayout"
-import NotFound from "../pages/notfound/NotFound"
+  const routesContent = `import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { ROUTES } from '../constants/routes'
+import DefaultLayout from '../layouts/DefaultLayout'
+import AdminLayout from '../layouts/AdminLayout'
 
-const AppRoutes = () => (
-  <Router>
-    <Routes>
+const getLayout = (name) => {
+  switch (name) {
+  case 'admin':
+      return <AdminLayout />
+    case 'default':
+    default:
+      return <DefaultLayout />
+  }
+}
 
-      {/* Routes */}
-       <Route
-        path={ROUTES.HOME}
-        element={
-          <DefaultLayout>
-            <Home />
-          </DefaultLayout>
-        }
-      />
+const AppRoutes = () => {
+  const groupedRoutes = ROUTES.reduce((acc, route) => {
+    const layout = route.layout || 'default'
+    acc[layout] = acc[layout] || []
+    acc[layout].push(route)
+    return acc
+  }, {})
 
-      {/* 404 */}
-      <Route path={ROUTES.NOT_FOUND} element={<NotFound />} />
-    </Routes>
-  </Router>
-)
+  return (
+    <Router>
+      <Routes>
+        {Object.entries(groupedRoutes).map(([layoutName, routes]) => (
+          <Route key={layoutName} path="/" element={getLayout(layoutName)}>
+            {routes.map(({ path, element, isIndex, auth, role }, i) => {
+              let content = element
+              if (auth) {
+                content = <RequireAuth role={role}>{element}</RequireAuth>
+              }
+              return (
+                <Route key={i} path={path} index={isIndex} element={content} />
+              )
+            })}
+          </Route>
+        ))}
+      </Routes>
+    </Router>
+  )
+}
 
 export default AppRoutes
+
 `;
   await fs.writeFile(path.join(routesPath, `index.${ext}`), routesContent);
+
+  const requireAuth = `import { Navigate, useLocation } from 'react-router-dom'
+
+// Simule un user connecté — à remplacer par ton vrai système d'auth
+const useAuth = () => {
+  const user = JSON.parse(localStorage.getItem('user'))
+  return user // null si pas connecté
+}
+
+export default function RequireAuth({ children, role }) {
+  const user = useAuth()
+  const location = useLocation()
+
+  if (!user) {
+    return <Navigate to="/login" state={{ from: location }} replace />
+  }
+
+  // Vérifie un rôle spécifique si demandé
+  if (role && user.role !== role) {
+    return <Navigate to="/unauthorized" replace />
+  }
+
+  return children
+}
+
+`;
+
+  await fs.writeFile(path.join(routesPath, `RequireAuth.${ext}`), requireAuth);
 }
 
 async function createNavbarComponent(basePath, typescript) {
@@ -553,6 +652,211 @@ src/
 `;
 
   await fs.writeFile(path.join(basePath, "README.md"), readme);
+
+  const advancedReadme = `# 🚀 ${projectName} (Avancé)
+  
+  # 🚀 Fonctionnalités avancées pour ton projet React
+
+Voici un ensemble d’outils, bonnes pratiques et composants avancés que tu peux ajouter à ton projet **à la demande**, quand tu en as besoin. Rien n’est installé automatiquement dans le script de setup, mais tout est prêt à être copié-collé.
+
+---
+
+## 🧠 1. Authentification globale avec Zustand + Persist
+
+Créer un fichier src/stores/authStore.js :
+
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+
+export const useAuthStore = create(
+  persist(
+    (set) => ({
+      user: null,
+      hasHydrated: false,
+      login: (data) => set({ user: data }),
+      logout: () => set({ user: null }),
+      setHasHydrated: (state) => set({ hasHydrated: state }),
+    }),
+    {
+      name: 'auth-storage',
+      onRehydrateStorage: () => (state) => {
+        state.setHasHydrated(true)
+      },
+    }
+  )
+)
+
+
+---
+
+## ⚙️ 2. API + axios
+
+Créer un fichier src/api/axios.js :
+
+
+import axios from 'axios'
+
+const instance = axios.create({
+  baseURL: import.meta.env.VITE_API_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
+
+export default instance
+
+
+Créer un dossier services/ avec postService.js :
+
+import axios from '../api/axios'
+
+export const fetchPosts = async (page = 1, limit = 10) => {
+  const res = await axios.get('/posts', {
+    params: { _page: page, _limit: limit },
+  })
+  return res.data
+}
+
+
+---
+
+## 🔐 3. Protection de route avec RequireAuth
+
+Créer src/routes/RequireAuth.jsx :
+
+
+import { Navigate, useLocation } from 'react-router-dom'
+import { useAuthStore } from '../stores/authStore'
+
+export default function RequireAuth({ children, role }) {
+  const user = useAuthStore((s) => s.user)
+  const hasHydrated = useAuthStore((s) => s.hasHydrated)
+  const location = useLocation()
+
+  if (!hasHydrated) return null
+  if (!user) return <Navigate to="/login" state={{ from: location }} replace />
+  if (role && user.role !== role) return <Navigate to="/unauthorized" replace />
+  return children
+}
+
+
+---
+
+## 🔁 4. React Query (data fetching + mutation)
+
+### Installer
+
+
+npm install @tanstack/react-query
+
+
+Créer un provider : src/providers/QueryProvider.jsx
+
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+const queryClient = new QueryClient()
+
+export default function QueryProvider({ children }) {
+  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+}
+
+
+Et l’utiliser dans App.jsx :
+
+
+import QueryProvider from './providers/QueryProvider'
+
+function App() {
+  return (
+    <QueryProvider>
+      <AppRoutes />
+    </QueryProvider>
+  )
+}
+
+
+---
+
+## 💡 5. Optimistic Update (React Query)
+
+Dans useMutation :
+
+
+onMutate: async (newItem) => {
+  await queryClient.cancelQueries(['posts'])
+  const previous = queryClient.getQueryData(['posts'])
+  queryClient.setQueryData(['posts'], (old) => [...(old || []), newItem])
+  return { previous }
+},
+onError: (err, newItem, context) => {
+  queryClient.setQueryData(['posts'], context.previous)
+},
+onSuccess: () => {
+  queryClient.invalidateQueries(['posts'])
+}
+
+
+---
+
+## 📄 6. Documentation automatique avec JSDoc
+
+### Installer
+
+
+npm install --save-dev jsdoc
+
+
+Créer un fichier jsdoc.json :
+
+
+{
+  "source": {
+    "include": ["src"],
+    "includePattern": ".jsx?$"
+  },
+  "opts": {
+    "destination": "./docs",
+    "recurse": true
+  }
+}
+
+
+Ajouter un script dans package.json :
+
+
+"scripts": {
+  "doc": "jsdoc -c jsdoc.json"
+}
+
+
+Lancer la génération :
+
+
+npm run doc
+
+
+---
+
+## 🧩 7. Exemple de JSDoc dans un composant React
+
+
+/**
+ * Bouton stylé personnalisé
+ * @param {Object} props
+ * @param {string} props.label - Le texte à afficher
+ * @param {() => void} props.onClick - Fonction appelée au clic
+ */
+function MyButton({ label, onClick }) {
+  return <button onClick={onClick}>{label}</button>
+}
+
+
+---
+
+Tu peux copier-coller chaque partie dans ton projet selon ce que tu veux activer ✅
+  `;
+
+  await fs.writeFile(path.join(basePath, "README-advanced.md"), advancedReadme);
 }
 
 // fonction run principale
@@ -560,9 +864,6 @@ async function run() {
   const projectName = await ask("Nom du projet : ");
   const typescript =
     (await ask("Utiliser TypeScript ? (o/n) : ")).toLowerCase() === "o";
-
-  const withTailwind =
-    (await ask("Installer Tailwind CSS ? (o/n) : ")).toLowerCase() === "o";
 
   const projectPath = path.resolve(projectName);
 
@@ -597,6 +898,7 @@ async function run() {
   await createPagesAndRouting(projectPath, typescript, projectName);
   await createNavbarComponent(projectPath, typescript);
   await createNotFoundPage(projectPath, typescript);
+  await createEnvFile(projectPath);
 
   console.log("\n📄 Création d’un App minimal...");
   await writeSimpleAppFile(projectPath, typescript, projectName);
